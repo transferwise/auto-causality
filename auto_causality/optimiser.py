@@ -58,6 +58,7 @@ class AutoCausality:
         estimator_list="auto",
         train_size=0.8,
         num_samples=-1,
+        treatment_val=0,
         test_size=None,
         propensity_model="dummy",
         components_task="regression",
@@ -195,6 +196,9 @@ class AutoCausality:
         self.resume_scores = []
         self.resume_cfg = []
 
+        # accept multi-valued treatement
+        self.treatment_val = treatment_val
+
         # # trained component models for each estimator
         # self.trained_estimators_dict = {}
 
@@ -322,16 +326,15 @@ class AutoCausality:
             for cfg in init_cfg:
                 self.resume_cfg.append(cfg) if cfg not in self.resume_cfg else None
 
+        eval_pts = init_cfg if len(self.resume_cfg) == 0 else self.resume_cfg
+        eval_rewards = [] if len(self.resume_scores) == 0 else self.resume_scores
+
         self.results = tune.run(
             self._tune_with_config,
             search_space,
             metric=self.metric,
-            points_to_evaluate=init_cfg
-            if len(self.resume_cfg) == 0
-            else self.resume_cfg,
-            evaluated_rewards=[]
-            if len(self.resume_scores) == 0
-            else self.resume_scores,
+            points_to_evaluate=eval_pts,
+            evaluated_rewards=eval_rewards,
             mode="max",
             low_cost_partial_config={},
             **self._settings["tuner"],
@@ -402,7 +405,7 @@ class AutoCausality:
                 self.identified_estimand,
                 method_name=self.estimator_name,
                 control_value=0,
-                treatment_value=1,
+                treatment_value=self.treatment_val,
                 target_units="ate",  # condition used for CATE
                 confidence_intervals=False,
                 method_params={
@@ -411,7 +414,6 @@ class AutoCausality:
                 },
             )
             scores = self._compute_metrics(estimate)
-
             return {
                 self.metric: scores["validation"][self.metric],
                 "estimator": estimate,
